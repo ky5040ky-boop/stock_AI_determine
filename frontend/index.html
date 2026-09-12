@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>株の売買判断ツール</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f6f8;
+    --card-bg: #ffffff;
+    --text: #1a1a1a;
+    --muted: #666;
+    --border: #e0e0e0;
+    --buy: #1a9e5c;
+    --sell: #d33d3d;
+    --hold: #8a6d00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --card-bg: #1f2229;
+      --text: #eaeaea;
+      --muted: #a0a0a0;
+      --border: #333;
+      --buy: #3ddc84;
+      --sell: #ff6b6b;
+      --hold: #ffd166;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
+    padding: 16px;
+  }
+  h1 {
+    font-size: 1.3rem;
+    margin: 0 0 16px;
+  }
+  .controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  input, select, button {
+    font-size: 1rem;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    color: var(--text);
+  }
+  button {
+    background: #2d6cdf;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+  }
+  button:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .decision {
+    font-size: 2rem;
+    font-weight: bold;
+  }
+  .decision.BUY { color: var(--buy); }
+  .decision.SELL { color: var(--sell); }
+  .decision.HOLD { color: var(--hold); }
+  .meta { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+  ul.reasons { list-style: none; padding: 0; margin: 12px 0 0; }
+  ul.reasons li {
+    padding: 8px 10px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    background: rgba(128,128,128,0.08);
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .tag {
+    font-weight: bold;
+    font-size: 0.8rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+    height: fit-content;
+  }
+  .tag.buy { background: rgba(26,158,92,0.15); color: var(--buy); }
+  .tag.sell { background: rgba(211,61,61,0.15); color: var(--sell); }
+  .tag.neutral { background: rgba(128,128,128,0.15); color: var(--muted); }
+  .chart-wrap { position: relative; height: 320px; overflow-x: auto; }
+  .error { color: var(--sell); }
+  .disclaimer { font-size: 0.8rem; color: var(--muted); margin-top: 24px; }
+</style>
+</head>
+<body>
+  <h1>株の売買判断ツール</h1>
+
+  <div class="controls">
+    <input id="ticker" type="text" placeholder="例: 7203.T / AAPL" value="7203.T">
+    <select id="period">
+      <option value="1mo">1ヶ月</option>
+      <option value="3mo">3ヶ月</option>
+      <option value="6mo" selected>6ヶ月</option>
+      <option value="1y">1年</option>
+      <option value="2y">2年</option>
+      <option value="5y">5年</option>
+    </select>
+    <button id="analyzeBtn">判断する</button>
+  </div>
+
+  <div id="result"></div>
+
+  <p class="disclaimer">
+    ※本ツールはテクニカル指標に基づく機械的な参考情報を表示するものであり、投資助言ではありません。
+    投資判断はご自身の責任で行ってください。
+  </p>
+
+  <script>
+    const tickerInput = document.getElementById('ticker');
+    const periodSelect = document.getElementById('period');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const resultDiv = document.getElementById('result');
+    let chartInstance = null;
+
+    const signalLabel = { buy: '買い', sell: '売り', neutral: '中立' };
+    const decisionLabel = { BUY: '買い', SELL: '売り', HOLD: '様子見' };
+
+    async function analyze() {
+      const ticker = tickerInput.value.trim();
+      const period = periodSelect.value;
+      if (!ticker) return;
+
+      analyzeBtn.disabled = true;
+      analyzeBtn.textContent = '判断中...';
+      resultDiv.innerHTML = '';
+
+      try {
+        const res = await fetch(`/api/analyze?ticker=${encodeURIComponent(ticker)}&period=${period}`);
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || '取得に失敗しました');
+        }
+        renderResult(data);
+      } catch (err) {
+        resultDiv.innerHTML = `<div class="card error">エラー: ${escapeHtml(err.message)}</div>`;
+      } finally {
+        analyzeBtn.disabled = false;
+        analyzeBtn.textContent = '判断する';
+      }
+    }
+
+    function renderResult(data) {
+      const reasonsHtml = data.reasons.map(r => `
+        <li>
+          <div>
+            <div><strong>${escapeHtml(r.indicator)}</strong></div>
+            <div class="meta">${escapeHtml(r.detail)}</div>
+          </div>
+          <span class="tag ${r.signal}">${signalLabel[r.signal] || r.signal}</span>
+        </li>
+      `).join('');
+
+      resultDiv.innerHTML = `
+        <div class="card">
+          <div class="decision ${data.decision}">${decisionLabel[data.decision] || data.decision}</div>
+          <div class="meta">${escapeHtml(data.ticker)} ・ 終値 ${data.latestClose ?? '-'} ・ スコア ${data.score}</div>
+          <ul class="reasons">${reasonsHtml}</ul>
+        </div>
+        <div class="card">
+          <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+        </div>
+      `;
+
+      drawChart(data.history);
+    }
+
+    function drawChart(history) {
+      const ctx = document.getElementById('priceChart');
+      if (chartInstance) {
+        chartInstance.destroy();
+      }
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: history.map(h => h.date),
+          datasets: [
+            { label: '終値', data: history.map(h => h.close), borderColor: '#2d6cdf', pointRadius: 0, tension: 0.1 },
+            { label: 'SMA25', data: history.map(h => h.sma25), borderColor: '#e8a33d', pointRadius: 0, tension: 0.1 },
+            { label: 'SMA75', data: history.map(h => h.sma75), borderColor: '#9b59b6', pointRadius: 0, tension: 0.1 },
+            { label: 'BB上限', data: history.map(h => h.bbUpper), borderColor: 'rgba(150,150,150,0.5)', pointRadius: 0, borderDash: [4,4] },
+            { label: 'BB下限', data: history.map(h => h.bbLower), borderColor: 'rgba(150,150,150,0.5)', pointRadius: 0, borderDash: [4,4] },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            x: { ticks: { maxTicksLimit: 10 } },
+          },
+        },
+      });
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = String(str);
+      return div.innerHTML;
+    }
+
+    analyzeBtn.addEventListener('click', analyze);
+    tickerInput.addEventListener('keydown', e => { if (e.key === 'Enter') analyze(); });
+
+    analyze();
+  </script>
+</body>
+</html>
