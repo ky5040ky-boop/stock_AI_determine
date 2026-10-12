@@ -393,7 +393,8 @@ def print_summary(s: dict, title: str = "") -> None:
             comp = st.get("completion_rate")
             if comp is None and "breakout_up_rate" in st:
                 comp = f"↑{st['breakout_up_rate']}/↓{st['breakout_down_rate']}"
-            print(f"{PATTERN_NAMES[pat][:9]:<18}{STAGE_NAMES.get(stage, stage)[:8]:<16}{st['n']:>6}"
+            sname = {"breakout_up": "ブレイク直後(上)", "breakout_down": "ブレイク直後(下)"}.get(stage) or STAGE_NAMES[stage]
+            print(f"{PATTERN_NAMES[pat][:9]:<18}{sname[:8]:<16}{st['n']:>6}"
                   f"{_f(st.get('win_rate')):>7}{_f(st.get('excess_avg_20')):>7}{_f(st.get('avg_ret_20')):>9}"
                   f"{_f(st.get('target_rate')):>9}{_f(st.get('stop_rate')):>7}{_f(comp):>7}")
 

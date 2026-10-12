@@ -44,7 +44,7 @@
     color: var(--text);
     font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
     padding: 16px;
-    max-width: 1200px;
+    max-width: 1280px;
     margin-inline: auto;
   }
   h1 { font-size: 1.3rem; margin: 0 0 4px; }
@@ -76,8 +76,9 @@
   .error { color: var(--bear); }
   .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-  th, td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+  th, td { padding: 8px 6px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
   th { color: var(--muted); font-weight: normal; font-size: 0.8rem; }
+  td.wrap { white-space: normal; min-width: 8em; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
   tbody tr { cursor: pointer; }
   tbody tr:hover, tbody tr.selected { background: rgba(128,128,128,0.12); }
@@ -280,7 +281,7 @@
 
   function histCell(h) {
     if (!h) return '<span class="meta">-</span>';
-    return `${h.n}件 ・ 対市場 ${signed(h.excess_avg_20)}`;
+    return `${h.n}件<span class="sub">対市場 ${signed(h.excess_avg_20)}</span>`;
   }
 
   function renderTable() {
@@ -289,10 +290,10 @@
     document.querySelectorAll('th.sortable').forEach(th => th.classList.toggle('active', th.dataset.sort === sortKey));
     $('resultBody').innerHTML = rows.map((r, i) => `
       <tr data-i="${i}">
-        <td><b>${esc(r.ticker)}</b> <span class="meta">${esc(r.name)}</span></td>
-        <td>${esc(r.pattern_name)}</td>
+        <td><b>${esc(r.ticker)}</b><span class="sub">${esc(r.name)}</span></td>
+        <td class="wrap">${esc(r.pattern_name)}</td>
         <td><span class="bias ${r.bias}">${BIAS_LABEL[r.bias]}</span></td>
-        <td>${esc(r.stage_name)}</td>
+        <td class="wrap">${esc(r.stage_name)}</td>
         <td class="num">${fmt(r.close)}</td>
         <td class="num">${fmt(r.neckline)}<span class="sub">${r.distance_to_neckline_pct > 0 ? '+' : ''}${fmt(r.distance_to_neckline_pct)}%</span></td>
         <td class="num">${fmt(r.target)}</td>

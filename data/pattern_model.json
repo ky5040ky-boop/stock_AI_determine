@@ -1,0 +1,137 @@
+{
+ "features": [
+  "progress",
+  "shape",
+  "size",
+  "trend",
+  "volume"
+ ],
+ "models": {
+  "complete": {
+   "bias": 0.7223,
+   "group": {
+    "ascending_triangle:converging": -1.3387,
+    "descending_triangle:converging": -1.5108,
+    "double_bottom:approaching": -0.5662,
+    "double_bottom:second_peak": 0.201,
+    "double_top:approaching": -1.0067,
+    "double_top:second_peak": -0.1836,
+    "head_and_shoulders:approaching": -0.4259,
+    "head_and_shoulders:right_shoulder": 0.4833,
+    "inverse_head_and_shoulders:approaching": -0.2422,
+    "inverse_head_and_shoulders:right_shoulder": 0.9706,
+    "symmetric_triangle:converging": 3.6193
+   },
+   "coef": {
+    "progress": 2.5777,
+    "shape": -0.1053,
+    "size": -1.5528,
+    "trend": -0.1049,
+    "volume": 0.0426
+   }
+  },
+  "target": {
+   "bias": -0.6931,
+   "group": {
+    "ascending_triangle:breakout": -0.021,
+    "ascending_triangle:converging": -0.8281,
+    "descending_triangle:breakout": -0.0469,
+    "descending_triangle:converging": -0.9637,
+    "double_bottom:approaching": 0.0067,
+    "double_bottom:breakout": 0.4101,
+    "double_bottom:second_peak": 0.4784,
+    "double_top:approaching": -0.2695,
+    "double_top:breakout": 0.2871,
+    "double_top:second_peak": 0.1817,
+    "head_and_shoulders:approaching": -0.1598,
+    "head_and_shoulders:breakout": 0.2438,
+    "head_and_shoulders:right_shoulder": 0.3856,
+    "inverse_head_and_shoulders:approaching": -0.1107,
+    "inverse_head_and_shoulders:breakout": 0.1619,
+    "inverse_head_and_shoulders:right_shoulder": 0.5692,
+    "symmetric_triangle:breakout": -0.3248
+   },
+   "coef": {
+    "progress": 1.4077,
+    "shape": 0.2835,
+    "size": -2.1108,
+    "trend": 0.1909,
+    "volume": 0.1983
+   }
+  }
+ },
+ "quality": {
+  "complete": {
+   "n": 39673,
+   "base_rate": 0.473,
+   "auc_in_sample": 0.666
+  },
+  "target": {
+   "n": 47317,
+   "base_rate": 0.253,
+   "auc_in_sample": 0.692
+  }
+ },
+ "generated_at": "2026-10-12T12:19:29+00:00",
+ "source": "CSV: all_stocks_5yr.csv",
+ "validation": {
+  "split_date": "2016-01-01",
+  "complete": {
+   "n": 18956,
+   "auc": 0.672,
+   "calibration": [
+    {
+     "predicted": 18.0,
+     "actual": 39.2,
+     "n": 74
+    },
+    {
+     "predicted": 33.9,
+     "actual": 32.0,
+     "n": 5334
+    },
+    {
+     "predicted": 46.5,
+     "actual": 44.6,
+     "n": 10070
+    },
+    {
+     "predicted": 70.1,
+     "actual": 72.7,
+     "n": 2948
+    },
+    {
+     "predicted": 92.0,
+     "actual": 94.5,
+     "n": 530
+    }
+   ]
+  },
+  "target": {
+   "n": 22091,
+   "auc": 0.671,
+   "calibration": [
+    {
+     "predicted": 13.5,
+     "actual": 14.1,
+     "n": 8161
+    },
+    {
+     "predicted": 27.5,
+     "actual": 26.9,
+     "n": 10798
+    },
+    {
+     "predicted": 49.4,
+     "actual": 48.7,
+     "n": 2658
+    },
+    {
+     "predicted": 62.8,
+     "actual": 53.8,
+     "n": 474
+    }
+   ]
+  }
+ }
+}
