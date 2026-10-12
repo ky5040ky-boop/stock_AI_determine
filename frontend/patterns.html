@@ -84,14 +84,25 @@
   .bias { font-weight: bold; font-size: 0.8rem; padding: 2px 8px; border-radius: 999px; }
   .bias.bullish { color: var(--bull); background: color-mix(in srgb, var(--bull) 14%, transparent); }
   .bias.bearish { color: var(--bear); background: color-mix(in srgb, var(--bear) 14%, transparent); }
-  .score { display: inline-flex; align-items: center; gap: 6px; }
-  .score .bar { width: 48px; height: 6px; border-radius: 3px; background: var(--grid); overflow: hidden; }
-  .score .bar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  .bias.neutral { color: var(--muted); background: color-mix(in srgb, var(--muted) 14%, transparent); }
   .chart-wrap { position: relative; height: 360px; }
   .detail-head { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; margin-bottom: 8px; }
   .detail-head h2 { font-size: 1.1rem; margin: 0; }
   .meta { color: var(--muted); font-size: 0.85rem; }
   .legend-note { color: var(--muted); font-size: 0.8rem; margin-top: 8px; }
+  th.sortable { cursor: pointer; text-decoration: underline dotted; }
+  th.sortable.active { color: var(--text); font-weight: bold; }
+  .pct { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+  .pct .bar { width: 44px; height: 6px; border-radius: 3px; background: var(--grid); overflow: hidden; }
+  .pct .bar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  .sub { display: block; color: var(--muted); font-size: 0.75rem; }
+  .pos { color: var(--bull); }
+  .neg { color: var(--bear); }
+  .hist { margin-top: 12px; font-size: 0.85rem; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+  .hist b { font-variant-numeric: tabular-nums; }
+  .stats-body { margin-top: 12px; font-size: 0.85rem; }
+  .stats-body p { color: var(--muted); margin: 8px 0; line-height: 1.6; }
+  .stats-body h3 { font-size: 0.95rem; margin: 16px 0 6px; }
   .disclaimer { font-size: 0.8rem; color: var(--muted); margin-top: 24px; }
   details summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
   details ul { font-size: 0.85rem; color: var(--muted); padding-left: 1.2em; }
@@ -115,12 +126,16 @@
       <label class="check"><input type="checkbox" name="pattern" value="double_bottom" checked>ダブルボトム</label>
       <label class="check"><input type="checkbox" name="pattern" value="head_and_shoulders" checked>三尊</label>
       <label class="check"><input type="checkbox" name="pattern" value="inverse_head_and_shoulders" checked>逆三尊</label>
+      <label class="check"><input type="checkbox" name="pattern" value="ascending_triangle" checked>上昇三角形</label>
+      <label class="check"><input type="checkbox" name="pattern" value="descending_triangle" checked>下降三角形</label>
+      <label class="check"><input type="checkbox" name="pattern" value="symmetric_triangle" checked>対称三角形</label>
     </div>
     <div class="row">
       <span class="title" style="font-weight:bold;font-size:0.9rem;min-width:6em">進行段階</span>
       <label class="check"><input type="checkbox" name="stage" value="second_peak" checked>2つ目の山/谷を形成中</label>
       <label class="check"><input type="checkbox" name="stage" value="right_shoulder" checked>右肩を形成中</label>
       <label class="check"><input type="checkbox" name="stage" value="approaching" checked>ネックラインへ接近中</label>
+      <label class="check"><input type="checkbox" name="stage" value="converging" checked>三角形が収束中</label>
       <label class="check"><input type="checkbox" name="stage" value="breakout" checked>ブレイク直後</label>
     </div>
     <div class="row">
@@ -130,13 +145,12 @@
         <option value="1" selected>標準</option>
         <option value="1.5">高(小さな波も検出)</option>
       </select>
-      <label class="title" for="minScore">最低スコア</label>
+      <label class="title" for="minScore">目標到達確率</label>
       <select id="minScore">
-        <option value="0">0</option>
-        <option value="40">40</option>
-        <option value="50" selected>50</option>
-        <option value="60">60</option>
-        <option value="70">70</option>
+        <option value="0" selected>指定なし</option>
+        <option value="20">20%以上</option>
+        <option value="30">30%以上</option>
+        <option value="40">40%以上</option>
       </select>
       <button id="scanBtn">スキャン</button>
     </div>
@@ -150,8 +164,11 @@
         <thead>
           <tr>
             <th>銘柄</th><th>パターン</th><th>方向</th><th>進行段階</th>
-            <th class="num">現在値</th><th class="num">ネックライン</th><th class="num">ネックまで</th>
-            <th class="num">目標値</th><th>スコア</th>
+            <th class="num">現在値</th><th class="num sortable" data-sort="distance">ネックライン</th>
+            <th class="num">目標値</th><th class="num">否定ライン</th>
+            <th class="sortable" data-sort="p_complete" title="ブレイク前のパターンが、崩れる前にネックラインを抜ける確率(40営業日以内)">完成確率</th>
+            <th class="sortable" data-sort="p_target" title="否定ラインより先に目標値へ到達する確率(60営業日以内)">目標到達確率</th>
+            <th title="同じパターン・進行段階の過去の実績(20営業日後、市場平均と比べた騰落率)">過去の実績</th>
           </tr>
         </thead>
         <tbody id="resultBody"></tbody>
@@ -165,8 +182,14 @@
       <span class="meta" id="detailMeta"></span>
     </div>
     <div class="chart-wrap"><canvas id="chart"></canvas></div>
-    <div class="legend-note">● はパターンを構成する山・谷、破線はネックライン、点線はネックラインからパターンの値幅だけ伸ばした目標値の目安です。</div>
+    <div class="hist" id="detailHist"></div>
+    <div class="legend-note">● はパターンを構成する山・谷、破線はネックライン(三角形は上下の線)、点線は目標値の目安(ネックラインからパターンの値幅だけ伸ばした値)です。否定ラインを超えるとパターンは崩れたとみなします。</div>
   </div>
+
+  <details class="card" id="statsCard">
+    <summary>過去データでの検証(的中率)</summary>
+    <div id="statsBody" class="stats-body">読み込み中…</div>
+  </details>
 
   <details class="card">
     <summary>判定方法について</summary>
@@ -174,8 +197,9 @@
       <li>過去1年の日足から、銘柄の値動きの大きさ(ATR)に応じた幅で山と谷(ZigZag)を抽出し、直近の山・谷の並びがパターンの形に当てはまるかを判定します。</li>
       <li><b>ダブルトップ/ボトム</b>: 上昇(下落)の後、ほぼ同じ高さ(差3%以内)の山(谷)が2つ。間の谷(山)がネックライン。</li>
       <li><b>三尊/逆三尊</b>: 3つの山(谷)のうち中央(頭)が最も高く(低く)、両肩が近い高さ。2つの谷(山)を結んだ線がネックライン。</li>
-      <li><b>進行段階</b>: まだ完成前(2つ目の山・右肩を形成中、ネックラインへ接近中)のものと、ネックラインを割って(超えて)5営業日以内のものを出力します。</li>
-      <li><b>スコア</b>(0〜100): 進行度(30)・山の高さの揃い具合(25)・パターンの大きさ(15)・直前トレンドの明確さ(15)・出来高の減少(15)の合計。</li>
+      <li><b>三角保ち合い</b>: 山と谷(4〜6点)にそれぞれ線を引き、幅が狭まっているもの。上値が水平で下値切り上げ=上昇三角形、下値が水平で上値切り下げ=下降三角形、両方が傾いて収束=対称三角形(ブレイクするまで方向未定)。</li>
+      <li><b>進行段階</b>: まだ完成前(2つ目の山・右肩を形成中、ネックラインへ接近中、三角形が収束中)のものと、ネックライン(三角形の線)を抜けて5営業日以内のものを出力します。</li>
+      <li><b>完成確率・目標到達確率</b>: 過去データで同じ判定を毎日行い、その後どうなったかを学習したモデル(ロジスティック回帰)による推定値です。入力はパターン・進行段階・ネックラインまでの進み具合・山の揃い具合・パターンの大きさ・直前トレンド・出来高の変化。下の「過去データでの検証」で、学習に使っていない期間でどれだけ当たったかを確認できます。</li>
     </ul>
   </details>
 
@@ -187,6 +211,7 @@
 <script>
   const $ = id => document.getElementById(id);
   let rows = [];
+  const BIAS_LABEL = { bullish: '▲ 上昇示唆', bearish: '▼ 下落示唆', neutral: '◆ 方向待ち' };
   let chart = null;
 
   const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -241,22 +266,48 @@
     }
   }
 
+  let sortKey = 'p_target';
+  const SORTERS = {
+    p_target: r => r.p_target ?? -1,
+    p_complete: r => r.p_complete ?? -1,
+    distance: r => -Math.abs(r.distance_to_neckline_pct),
+  };
+
+  const pctCell = v => v == null ? '<span class="meta">-</span>'
+    : `<span class="pct"><span class="bar"><span style="width:${v}%"></span></span>${fmt(v)}%</span>`;
+  const signed = (v, digits = 2) => v == null ? '-'
+    : `<span class="${v > 0 ? 'pos' : v < 0 ? 'neg' : ''}">${v > 0 ? '+' : ''}${Number(v).toFixed(digits)}%</span>`;
+
+  function histCell(h) {
+    if (!h) return '<span class="meta">-</span>';
+    return `${h.n}件 ・ 対市場 ${signed(h.excess_avg_20)}`;
+  }
+
   function renderTable() {
     $('resultCard').hidden = rows.length === 0;
+    rows.sort((a, b) => SORTERS[sortKey](b) - SORTERS[sortKey](a));
+    document.querySelectorAll('th.sortable').forEach(th => th.classList.toggle('active', th.dataset.sort === sortKey));
     $('resultBody').innerHTML = rows.map((r, i) => `
       <tr data-i="${i}">
         <td><b>${esc(r.ticker)}</b> <span class="meta">${esc(r.name)}</span></td>
         <td>${esc(r.pattern_name)}</td>
-        <td><span class="bias ${r.bias}">${r.bias === 'bullish' ? '▲ 上昇示唆' : '▼ 下落示唆'}</span></td>
+        <td><span class="bias ${r.bias}">${BIAS_LABEL[r.bias]}</span></td>
         <td>${esc(r.stage_name)}</td>
         <td class="num">${fmt(r.close)}</td>
-        <td class="num">${fmt(r.neckline)}</td>
-        <td class="num">${r.distance_to_neckline_pct > 0 ? '+' : ''}${fmt(r.distance_to_neckline_pct)}%</td>
+        <td class="num">${fmt(r.neckline)}<span class="sub">${r.distance_to_neckline_pct > 0 ? '+' : ''}${fmt(r.distance_to_neckline_pct)}%</span></td>
         <td class="num">${fmt(r.target)}</td>
-        <td><span class="score"><span class="bar"><span style="width:${r.score}%"></span></span>${r.score}</span></td>
+        <td class="num">${fmt(r.stop)}</td>
+        <td>${pctCell(r.p_complete)}</td>
+        <td>${pctCell(r.p_target)}</td>
+        <td>${histCell(r.history)}</td>
       </tr>`).join('');
     if (rows.length) showDetail(0);
   }
+
+  document.querySelectorAll('th.sortable').forEach(th => th.addEventListener('click', () => {
+    sortKey = th.dataset.sort;
+    renderTable();
+  }));
 
   $('resultBody').addEventListener('click', e => {
     const tr = e.target.closest('tr');
@@ -268,7 +319,18 @@
     document.querySelectorAll('#resultBody tr').forEach(tr => tr.classList.toggle('selected', Number(tr.dataset.i) === i));
     $('detailCard').hidden = false;
     $('detailTitle').textContent = `${r.ticker} ${r.name} — ${r.pattern_name}`;
-    $('detailMeta').textContent = `${r.stage_name} ・ スコア ${r.score} ・ データ最終日 ${r.last_date}`;
+    const probs = [r.p_complete != null ? `完成確率 ${r.p_complete}%` : null,
+                   r.p_target != null ? `目標到達確率 ${r.p_target}%` : null].filter(Boolean).join(' ・ ');
+    $('detailMeta').textContent = `${r.stage_name}${probs ? ' ・ ' + probs : ''} ・ データ最終日 ${r.last_date}`;
+    const h = r.history;
+    $('detailHist').innerHTML = h ? `
+      <span>過去の同じパターン・段階: <b>${h.n}</b>件</span>
+      ${h.completion_rate != null ? `<span>完成率 <b>${h.completion_rate}%</b></span>` : ''}
+      ${h.target_rate != null ? `<span>目標到達 <b>${h.target_rate}%</b> / 否定 <b>${h.stop_rate}%</b></span>` : ''}
+      ${h.win_rate != null ? `<span>20日後に示唆方向へ動いた割合 <b>${h.win_rate}%</b></span>` : ''}
+      ${h.excess_avg_20 != null ? `<span>市場平均との差 <b>${signed(h.excess_avg_20)}</b>
+        ${h.excess_halves ? `(前半 ${signed(h.excess_halves[0])} / 後半 ${signed(h.excess_halves[1])})` : ''}</span>` : ''}
+    ` : '';
     try {
       const res = await fetch(`/api/patterns/detail/${encodeURIComponent(r.ticker)}?sensitivity=${$('sensitivity').value}`);
       const data = await res.json();
@@ -291,7 +353,8 @@
       return labels.map(l => m.has(l) ? m.get(l) : null);
     };
     const pointLabels = new Map(p.points.map(pt => [pt.date, pt.label]));
-    const neck = p.neckline_line;
+    const lineName = p.lines.length === 2 ? '上値線・下値線' : 'ネックライン';
+    const targetFrom = labels.indexOf(p.points[p.points.length - 1].date);
     const textColor = css('--muted');
 
     if (chart) chart.destroy();
@@ -303,9 +366,11 @@
           { label: '終値', data: view.map(s => s.close), borderColor: css('--price'), borderWidth: 2, pointRadius: 0, tension: 0 },
           { label: 'パターンの山・谷', data: at(p.points), borderColor: css('--text'), backgroundColor: css('--text'),
             showLine: false, pointRadius: 5, pointHoverRadius: 7, pointBorderColor: css('--card-bg'), pointBorderWidth: 2 },
-          { label: 'ネックライン', data: at(neck), borderColor: css('--neckline'), borderWidth: 2, borderDash: [6, 4],
-            pointRadius: 0, spanGaps: true },
-          { label: '目標値(目安)', data: labels.map((l, i) => i >= labels.indexOf(neck[0].date) ? p.target : null),
+          ...p.lines.map((ln, k) => ({
+            label: lineName, data: at(ln), borderColor: css('--neckline'), borderWidth: 2, borderDash: [6, 4],
+            pointRadius: 0, spanGaps: true, hideInLegend: k > 0,
+          })),
+          { label: '目標値(目安)', data: labels.map((l, i) => i >= targetFrom ? p.target : null),
             borderColor: textColor, borderWidth: 1.5, borderDash: [2, 3], pointRadius: 0 },
         ],
       },
@@ -315,7 +380,7 @@
         animation: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
-          legend: { labels: { color: textColor, boxWidth: 14 } },
+          legend: { labels: { color: textColor, boxWidth: 14, filter: (item, data) => !data.datasets[item.datasetIndex].hideInLegend } },
           tooltip: {
             filter: item => item.raw != null,
             callbacks: {
@@ -334,8 +399,47 @@
     });
   }
 
+  async function loadStats() {
+    const res = await fetch('/api/patterns/stats');
+    if (!res.ok) { $('statsBody').textContent = '検証結果がありません(python -m backend.pattern_backtest で作成できます)'; return; }
+    const st = await res.json();
+    const v = st.model_validation || {};
+    const calRows = task => (v[task]?.calibration || [])
+      .map(b => `<tr><td class="num">${b.predicted}%</td><td class="num">${b.actual}%</td><td class="num">${b.n}</td></tr>`).join('');
+    const calTable = (task, label) => v[task] ? `
+      <div><b>${label}</b>(AUC ${v[task].auc}、検証 ${v[task].n}件)
+        <table style="width:auto"><thead><tr><th class="num">予測</th><th class="num">実際</th><th class="num">件数</th></tr></thead>
+        <tbody>${calRows(task)}</tbody></table></div>` : '';
+    const body = Object.entries(st.by_pattern).flatMap(([pat, stages]) => Object.entries(stages).map(([stage, x]) => {
+      const sname = stage.startsWith('breakout_') ? `ブレイク直後(${stage.endsWith('up') ? '上' : '下'}抜け)` : (st.stage_names[stage] || stage);
+      const comp = x.completion_rate ?? (x.breakout_up_rate != null ? `↑${x.breakout_up_rate} / ↓${x.breakout_down_rate}` : null);
+      return `<tr>
+        <td>${esc(st.pattern_names[pat])}</td><td>${esc(sname)}</td><td class="num">${x.n}</td>
+        <td class="num">${comp ?? '-'}${typeof comp === 'number' ? '%' : ''}</td>
+        <td class="num">${x.target_rate != null ? x.target_rate + '%' : '-'}</td>
+        <td class="num">${x.stop_rate != null ? x.stop_rate + '%' : '-'}</td>
+        <td class="num">${x.win_rate != null ? x.win_rate + '%' : '-'}</td>
+        <td class="num">${signed(x.excess_avg_20)}</td>
+        <td class="num">${x.excess_halves ? signed(x.excess_halves[0]) + ' / ' + signed(x.excess_halves[1]) : '-'}</td>
+      </tr>`;
+    })).join('');
+    $('statsBody').innerHTML = `
+      <p>データ: ${esc(st.source)}(${st.tickers}銘柄、${st.period.start}〜${st.period.end}に検出された${st.events.toLocaleString()}件)。
+        各営業日に「その日までのデータだけ」で判定し、新たに検出された翌日の始値から測っています。</p>
+      <h3>確率モデルの検証(${esc(v.split_date)}より前で学習 → 以降の期間で予測)</h3>
+      <p>予測した確率と実際の割合が近いほど、表示している確率は信頼できます。AUCは0.5で当てずっぽう、1.0で完全な予測です。</p>
+      <div class="row" style="align-items:flex-start;gap:24px">${calTable('complete', '完成確率')}${calTable('target', '目標到達確率')}</div>
+      <h3>パターン・段階別の実績</h3>
+      <p>対市場 = 20営業日後の騰落率(示唆の方向で見た値)から、同じ日の全銘柄平均を引いたもの。前半/後半で符号が揃っていないものは、偶然の偏りの可能性が高いと考えてください。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>パターン</th><th>段階</th><th class="num">件数</th><th class="num">完成率</th><th class="num">目標到達</th>
+          <th class="num">否定</th><th class="num">20日勝率</th><th class="num">対市場</th><th class="num">前半 / 後半</th></tr></thead>
+        <tbody>${body}</tbody></table></div>`;
+  }
+
   $('scanBtn').addEventListener('click', scan);
   loadUniverses();
+  loadStats();
 </script>
 </body>
 </html>

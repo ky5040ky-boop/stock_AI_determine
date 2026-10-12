@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import re
 import threading
 import time
+from pathlib import Path
 
 import pandas as pd
-import yfinance as yf
 from fastapi import APIRouter, HTTPException, Query
 
-from backend.patterns import PATTERN_NAMES, detect_patterns
+from backend.market_data import download_ohlcv
+from backend.patterns import PATTERN_NAMES, STAGE_NAMES, detect_patterns
 from backend.universes import UNIVERSES, ticker_name
 
 router = APIRouter(prefix="/api/patterns", tags=["patterns"])
@@ -20,6 +22,34 @@ MAX_TICKERS = 150
 _cache: dict[str, tuple[float, pd.DataFrame]] = {}
 _cache_lock = threading.Lock()
 
+STATS_PATH = Path(__file__).resolve().parent.parent / "data" / "pattern_stats.json"
+_stats_cache: dict = {}
+
+
+def load_stats() -> dict | None:
+    """バックテスト結果(python -m backend.pattern_backtest で作成)。ファイル更新時に読み直す。"""
+    try:
+        mtime = STATS_PATH.stat().st_mtime
+    except OSError:
+        return None
+    if _stats_cache.get("mtime") != mtime:
+        _stats_cache.update(mtime=mtime, data=json.loads(STATS_PATH.read_text()))
+    return _stats_cache["data"]
+
+
+HIST_KEYS = ("n", "completion_rate", "target_rate", "stop_rate", "win_rate", "excess_avg_20", "excess_halves")
+
+
+def historical_record(stats: dict | None, p: dict) -> dict | None:
+    """同じパターン・進行段階の過去の実績。"""
+    if not stats:
+        return None
+    stage = p["stage"]
+    if p["pattern"] == "symmetric_triangle" and stage == "breakout":
+        stage = "breakout_up" if p["bias"] == "bullish" else "breakout_down"
+    st = stats["by_pattern"].get(p["pattern"], {}).get(stage)
+    return {k: st[k] for k in HIST_KEYS if k in st} if st else None
+
 
 def normalize_ticker(raw: str) -> str:
     """'7203' のような日本株の証券コードには '.T' を補う。"""
@@ -27,11 +57,6 @@ def normalize_ticker(raw: str) -> str:
     if re.fullmatch(r"\d{3}[0-9A-Z]", t):
         t += ".T"
     return t
-
-
-def _clean(df: pd.DataFrame) -> pd.DataFrame:
-    cols = [c for c in ["Open", "High", "Low", "Close", "Volume"] if c in df.columns]
-    return df[cols].apply(pd.to_numeric, errors="coerce").dropna(subset=["High", "Low", "Close"])
 
 
 def fetch_prices(tickers: list[str], period: str = "1y") -> dict[str, pd.DataFrame]:
@@ -46,25 +71,13 @@ def fetch_prices(tickers: list[str], period: str = "1y") -> dict[str, pd.DataFra
     missing = [t for t in tickers if t not in out]
     if missing:
         try:
-            raw = yf.download(
-                missing, period=period, interval="1d", group_by="ticker",
-                auto_adjust=True, progress=False, threads=True,
-            )
+            fetched = download_ohlcv(missing, period)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"株価データの取得に失敗しました: {exc}") from exc
-        if raw is not None and not raw.empty:
-            for t in missing:
-                if isinstance(raw.columns, pd.MultiIndex):
-                    if t not in raw.columns.get_level_values(0):
-                        continue
-                    df = raw[t]
-                else:
-                    df = raw
-                df = _clean(df)
-                if len(df):
-                    out[t] = df
-                    with _cache_lock:
-                        _cache[f"{t}:{period}"] = (now, df)
+        with _cache_lock:
+            for t, df in fetched.items():
+                _cache[f"{t}:{period}"] = (now, df)
+        out.update(fetched)
     return out
 
 
@@ -100,18 +113,20 @@ def scan(
     want_stages = {s for s in stages.split(",") if s}
 
     prices = fetch_prices(names)
+    stats = load_stats()
     results = []
     for t in names:
         df = prices.get(t)
         if df is None:
             continue
         for p in detect_patterns(df, sensitivity=sensitivity):
-            if p["pattern"] not in want_patterns or p["score"] < min_score:
+            if p["pattern"] not in want_patterns or (p["score"] or 0) < min_score:
                 continue
             if want_stages and p["stage"] not in want_stages:
                 continue
-            results.append({"ticker": t, "name": ticker_name(t), "last_date": str(df.index[-1].date()), **p})
-    results.sort(key=lambda r: r["score"], reverse=True)
+            results.append({"ticker": t, "name": ticker_name(t), "last_date": str(df.index[-1].date()),
+                            **p, "history": historical_record(stats, p)})
+    results.sort(key=lambda r: -1 if r["score"] is None else r["score"], reverse=True)
 
     return {
         "scanned": len(names),
@@ -142,3 +157,12 @@ def detail(ticker: str, sensitivity: float = Query(1.0, ge=0.5, le=2.0)):
             for idx, r in df.iterrows()
         ],
     }
+
+
+@router.get("/stats")
+def stats():
+    """過去データでのパターン別の実績と、確率モデルの検証結果。"""
+    data = load_stats()
+    if data is None:
+        raise HTTPException(status_code=404, detail="検証結果がありません。python -m backend.pattern_backtest を実行してください")
+    return {**data, "pattern_names": PATTERN_NAMES, "stage_names": STAGE_NAMES}

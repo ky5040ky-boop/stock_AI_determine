@@ -11,9 +11,13 @@ yfinance から取得した株価データをもとに、テクニカル指標(�
   - `main.py` — APIエンドポイントとフロントエンドの配信
   - `indicators.py` — SMA/RSI/MACD/ボリンジャーバンドの計算
   - `judge.py` — 指標を組み合わせた売買判断ロジック
-  - `patterns.py` — チャートパターン(ダブルトップ/ダブルボトム/三尊/逆三尊)の検出ロジック
+  - `patterns.py` — チャートパターン(ダブルトップ/ボトム・三尊/逆三尊・三角保ち合い)の検出ロジック
   - `pattern_api.py` — 複数銘柄をスキャンするパターン検出API
+  - `pattern_backtest.py` — パターンの的中率検証(バックテスト)と確率モデルの学習
+  - `market_data.py` — 株価データの取得(yfinance / CSV)
   - `universes.py` — スキャン対象のプリセット銘柄リスト
+- `data/pattern_stats.json` — 過去データでのパターン別の実績(画面の「過去の実績」「過去データでの検証」に表示)
+- `data/pattern_model.json` — 完成確率・目標到達確率を推定するモデル
 - `frontend/index.html` — 銘柄コードを入力してチャートと判断結果を表示する画面(Chart.js使用)
 - `frontend/patterns.html` — パターンが発生しそうな銘柄を一覧表示するスクリーナー画面
 - `tests/` — パターン検出のテスト(`python -m pytest tests`)
