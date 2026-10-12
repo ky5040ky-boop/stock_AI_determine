@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>チャートパターン検出</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f5f6f8;
+    --card-bg: #fcfcfb;
+    --text: #0b0b0b;
+    --muted: #52514e;
+    --border: #e0e0e0;
+    --grid: rgba(0,0,0,0.07);
+    --accent: #2a78d6;
+    --price: #2a78d6;
+    --neckline: #eb6834;
+    --bull: #1a7f4b;
+    --bear: #c23434;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #121212;
+      --card-bg: #1a1a19;
+      --text: #f0efec;
+      --muted: #c3c2b7;
+      --border: #333;
+      --grid: rgba(255,255,255,0.08);
+      --accent: #3987e5;
+      --price: #3987e5;
+      --neckline: #d95926;
+      --bull: #3ddc84;
+      --bear: #ff6b6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
+    padding: 16px;
+    max-width: 1200px;
+    margin-inline: auto;
+  }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  nav { margin-bottom: 16px; font-size: 0.9rem; }
+  nav a { color: var(--accent); }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .controls { display: grid; gap: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  .row > label.title { font-weight: bold; min-width: 6em; font-size: 0.9rem; }
+  input[type=text], select, button, textarea {
+    font: inherit;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    color: var(--text);
+  }
+  textarea { width: 100%; min-height: 60px; }
+  button { background: var(--accent); color: #fff; border: none; cursor: pointer; font-weight: bold; }
+  button:disabled { opacity: 0.6; cursor: default; }
+  .check { display: inline-flex; gap: 4px; align-items: center; font-size: 0.9rem; }
+  .status { color: var(--muted); font-size: 0.9rem; margin: 8px 0; }
+  .error { color: var(--bear); }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+  th { color: var(--muted); font-weight: normal; font-size: 0.8rem; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover, tbody tr.selected { background: rgba(128,128,128,0.12); }
+  .bias { font-weight: bold; font-size: 0.8rem; padding: 2px 8px; border-radius: 999px; }
+  .bias.bullish { color: var(--bull); background: color-mix(in srgb, var(--bull) 14%, transparent); }
+  .bias.bearish { color: var(--bear); background: color-mix(in srgb, var(--bear) 14%, transparent); }
+  .score { display: inline-flex; align-items: center; gap: 6px; }
+  .score .bar { width: 48px; height: 6px; border-radius: 3px; background: var(--grid); overflow: hidden; }
+  .score .bar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  .chart-wrap { position: relative; height: 360px; }
+  .detail-head { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; margin-bottom: 8px; }
+  .detail-head h2 { font-size: 1.1rem; margin: 0; }
+  .meta { color: var(--muted); font-size: 0.85rem; }
+  .legend-note { color: var(--muted); font-size: 0.8rem; margin-top: 8px; }
+  .disclaimer { font-size: 0.8rem; color: var(--muted); margin-top: 24px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+  details ul { font-size: 0.85rem; color: var(--muted); padding-left: 1.2em; }
+</style>
+</head>
+<body>
+  <h1>チャートパターン検出</h1>
+  <nav><a href="index.html">← 売買判断ツールへ</a></nav>
+
+  <div class="card controls">
+    <div class="row">
+      <label class="title" for="universe">対象銘柄</label>
+      <select id="universe"></select>
+    </div>
+    <div class="row" id="customRow" hidden>
+      <textarea id="customTickers" placeholder="例: 7203, 6758, 9984.T, AAPL, NVDA (カンマ・空白・改行区切り。4桁コードは自動で .T を付与)"></textarea>
+    </div>
+    <div class="row">
+      <span class="title" style="font-weight:bold;font-size:0.9rem;min-width:6em">パターン</span>
+      <label class="check"><input type="checkbox" name="pattern" value="double_top" checked>ダブルトップ</label>
+      <label class="check"><input type="checkbox" name="pattern" value="double_bottom" checked>ダブルボトム</label>
+      <label class="check"><input type="checkbox" name="pattern" value="head_and_shoulders" checked>三尊</label>
+      <label class="check"><input type="checkbox" name="pattern" value="inverse_head_and_shoulders" checked>逆三尊</label>
+    </div>
+    <div class="row">
+      <span class="title" style="font-weight:bold;font-size:0.9rem;min-width:6em">進行段階</span>
+      <label class="check"><input type="checkbox" name="stage" value="second_peak" checked>2つ目の山/谷を形成中</label>
+      <label class="check"><input type="checkbox" name="stage" value="right_shoulder" checked>右肩を形成中</label>
+      <label class="check"><input type="checkbox" name="stage" value="approaching" checked>ネックラインへ接近中</label>
+      <label class="check"><input type="checkbox" name="stage" value="breakout" checked>ブレイク直後</label>
+    </div>
+    <div class="row">
+      <label class="title" for="sensitivity">感度</label>
+      <select id="sensitivity">
+        <option value="0.7">低(大きな波のみ)</option>
+        <option value="1" selected>標準</option>
+        <option value="1.5">高(小さな波も検出)</option>
+      </select>
+      <label class="title" for="minScore">最低スコア</label>
+      <select id="minScore">
+        <option value="0">0</option>
+        <option value="40">40</option>
+        <option value="50" selected>50</option>
+        <option value="60">60</option>
+        <option value="70">70</option>
+      </select>
+      <button id="scanBtn">スキャン</button>
+    </div>
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <div class="card" id="resultCard" hidden>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>銘柄</th><th>パターン</th><th>方向</th><th>進行段階</th>
+            <th class="num">現在値</th><th class="num">ネックライン</th><th class="num">ネックまで</th>
+            <th class="num">目標値</th><th>スコア</th>
+          </tr>
+        </thead>
+        <tbody id="resultBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" id="detailCard" hidden>
+    <div class="detail-head">
+      <h2 id="detailTitle"></h2>
+      <span class="meta" id="detailMeta"></span>
+    </div>
+    <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    <div class="legend-note">● はパターンを構成する山・谷、破線はネックライン、点線はネックラインからパターンの値幅だけ伸ばした目標値の目安です。</div>
+  </div>
+
+  <details class="card">
+    <summary>判定方法について</summary>
+    <ul>
+      <li>過去1年の日足から、銘柄の値動きの大きさ(ATR)に応じた幅で山と谷(ZigZag)を抽出し、直近の山・谷の並びがパターンの形に当てはまるかを判定します。</li>
+      <li><b>ダブルトップ/ボトム</b>: 上昇(下落)の後、ほぼ同じ高さ(差3%以内)の山(谷)が2つ。間の谷(山)がネックライン。</li>
+      <li><b>三尊/逆三尊</b>: 3つの山(谷)のうち中央(頭)が最も高く(低く)、両肩が近い高さ。2つの谷(山)を結んだ線がネックライン。</li>
+      <li><b>進行段階</b>: まだ完成前(2つ目の山・右肩を形成中、ネックラインへ接近中)のものと、ネックラインを割って(超えて)5営業日以内のものを出力します。</li>
+      <li><b>スコア</b>(0〜100): 進行度(30)・山の高さの揃い具合(25)・パターンの大きさ(15)・直前トレンドの明確さ(15)・出来高の減少(15)の合計。</li>
+    </ul>
+  </details>
+
+  <p class="disclaimer">
+    ※本ツールは過去の値動きの形を機械的に判定した参考情報であり、投資助言ではありません。
+    パターンが完成しない・ダマシになることも多くあります。投資判断はご自身の責任で行ってください。
+  </p>
+
+<script>
+  const $ = id => document.getElementById(id);
+  let rows = [];
+  let chart = null;
+
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const fmt = v => v == null ? '-' : Number(v).toLocaleString('ja-JP', { maximumFractionDigits: 2 });
+  const esc = s => { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; };
+
+  async function loadUniverses() {
+    const res = await fetch('/api/patterns/universes');
+    const list = await res.json();
+    $('universe').innerHTML = list.map(u =>
+      `<option value="${esc(u.id)}">${esc(u.name)}${u.count ? `(${u.count}銘柄)` : ''}</option>`).join('');
+  }
+
+  $('universe').addEventListener('change', () => {
+    $('customRow').hidden = $('universe').value !== 'custom';
+  });
+
+  const checked = name => [...document.querySelectorAll(`input[name=${name}]:checked`)].map(e => e.value);
+
+  async function scan() {
+    const params = new URLSearchParams({
+      universe: $('universe').value,
+      tickers: $('customTickers').value,
+      patterns: checked('pattern').join(','),
+      stages: checked('stage').join(','),
+      min_score: $('minScore').value,
+      sensitivity: $('sensitivity').value,
+    });
+    if (!checked('pattern').length || !checked('stage').length) {
+      $('status').innerHTML = '<span class="error">パターンと進行段階を1つ以上選んでください</span>';
+      return;
+    }
+    $('scanBtn').disabled = true;
+    $('scanBtn').textContent = 'スキャン中...';
+    $('status').textContent = '株価データを取得して判定しています(銘柄数により数十秒かかります)';
+    $('resultCard').hidden = true;
+    $('detailCard').hidden = true;
+    try {
+      const res = await fetch(`/api/patterns/scan?${params}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'スキャンに失敗しました');
+      rows = data.results;
+      let msg = `${data.scanned}銘柄をスキャン → ${rows.length}件の候補`;
+      if (data.failed.length) msg += `(取得失敗: ${data.failed.join(', ')})`;
+      $('status').textContent = msg;
+      renderTable();
+    } catch (err) {
+      $('status').innerHTML = `<span class="error">エラー: ${esc(err.message)}</span>`;
+    } finally {
+      $('scanBtn').disabled = false;
+      $('scanBtn').textContent = 'スキャン';
+    }
+  }
+
+  function renderTable() {
+    $('resultCard').hidden = rows.length === 0;
+    $('resultBody').innerHTML = rows.map((r, i) => `
+      <tr data-i="${i}">
+        <td><b>${esc(r.ticker)}</b> <span class="meta">${esc(r.name)}</span></td>
+        <td>${esc(r.pattern_name)}</td>
+        <td><span class="bias ${r.bias}">${r.bias === 'bullish' ? '▲ 上昇示唆' : '▼ 下落示唆'}</span></td>
+        <td>${esc(r.stage_name)}</td>
+        <td class="num">${fmt(r.close)}</td>
+        <td class="num">${fmt(r.neckline)}</td>
+        <td class="num">${r.distance_to_neckline_pct > 0 ? '+' : ''}${fmt(r.distance_to_neckline_pct)}%</td>
+        <td class="num">${fmt(r.target)}</td>
+        <td><span class="score"><span class="bar"><span style="width:${r.score}%"></span></span>${r.score}</span></td>
+      </tr>`).join('');
+    if (rows.length) showDetail(0);
+  }
+
+  $('resultBody').addEventListener('click', e => {
+    const tr = e.target.closest('tr');
+    if (tr) showDetail(Number(tr.dataset.i));
+  });
+
+  async function showDetail(i) {
+    const r = rows[i];
+    document.querySelectorAll('#resultBody tr').forEach(tr => tr.classList.toggle('selected', Number(tr.dataset.i) === i));
+    $('detailCard').hidden = false;
+    $('detailTitle').textContent = `${r.ticker} ${r.name} — ${r.pattern_name}`;
+    $('detailMeta').textContent = `${r.stage_name} ・ スコア ${r.score} ・ データ最終日 ${r.last_date}`;
+    try {
+      const res = await fetch(`/api/patterns/detail/${encodeURIComponent(r.ticker)}?sensitivity=${$('sensitivity').value}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || '取得に失敗しました');
+      drawChart(data.chart, r);
+    } catch (err) {
+      $('detailMeta').innerHTML = `<span class="error">チャート取得エラー: ${esc(err.message)}</span>`;
+    }
+  }
+
+  function drawChart(series, p) {
+    // パターン起点の少し前から表示
+    const startDate = p.points[0].date;
+    let start = series.findIndex(s => s.date >= startDate);
+    start = Math.max(0, start - 20);
+    const view = series.slice(start);
+    const labels = view.map(s => s.date);
+    const at = dates => {
+      const m = new Map(dates.map(d => [d.date, d.price]));
+      return labels.map(l => m.has(l) ? m.get(l) : null);
+    };
+    const pointLabels = new Map(p.points.map(pt => [pt.date, pt.label]));
+    const neck = p.neckline_line;
+    const textColor = css('--muted');
+
+    if (chart) chart.destroy();
+    chart = new Chart($('chart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: '終値', data: view.map(s => s.close), borderColor: css('--price'), borderWidth: 2, pointRadius: 0, tension: 0 },
+          { label: 'パターンの山・谷', data: at(p.points), borderColor: css('--text'), backgroundColor: css('--text'),
+            showLine: false, pointRadius: 5, pointHoverRadius: 7, pointBorderColor: css('--card-bg'), pointBorderWidth: 2 },
+          { label: 'ネックライン', data: at(neck), borderColor: css('--neckline'), borderWidth: 2, borderDash: [6, 4],
+            pointRadius: 0, spanGaps: true },
+          { label: '目標値(目安)', data: labels.map((l, i) => i >= labels.indexOf(neck[0].date) ? p.target : null),
+            borderColor: textColor, borderWidth: 1.5, borderDash: [2, 3], pointRadius: 0 },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { color: textColor, boxWidth: 14 } },
+          tooltip: {
+            filter: item => item.raw != null,
+            callbacks: {
+              label: item => {
+                const extra = item.datasetIndex === 1 ? `(${pointLabels.get(item.label)})` : '';
+                return `${item.dataset.label}${extra}: ${fmt(item.raw)}`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { ticks: { color: textColor, maxTicksLimit: innerWidth < 600 ? 4 : 8, maxRotation: 0, autoSkipPadding: 16 }, grid: { display: false } },
+          y: { ticks: { color: textColor }, grid: { color: css('--grid') } },
+        },
+      },
+    });
+  }
+
+  $('scanBtn').addEventListener('click', scan);
+  loadUniverses();
+</script>
+</body>
+</html>

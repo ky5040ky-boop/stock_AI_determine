@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.indicators import compute_all
 from backend.judge import judge
+from backend.pattern_api import router as pattern_router
 
 app = FastAPI(title="株の売買判断ツール")
 
@@ -92,5 +93,7 @@ def _safe_float(value):
         return None
     return round(float(value), 4)
 
+
+app.include_router(pattern_router)
 
 app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
